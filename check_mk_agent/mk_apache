@@ -1,0 +1,22 @@
+#!/bin/bash
+
+# 
+# Apache monitoring
+#
+#	Version 1.0
+#
+# 2012-07-06 FLX f@qsol.ro
+#
+
+if which apachectl > /dev/null 2>&1; then
+	echo '<<<apache>>>'
+	apachectl status
+elif  which apache2ctl > /dev/null 2>&1; then
+	echo '<<<apache>>>'
+	apache2ctl status
+elif [ -x /usr/local/apache/bin/apachectl ]; then
+	# WHM/cPanel  specific
+	echo '<<<apache>>>'
+	/usr/local/apache/bin/apachectl status
+fi
+

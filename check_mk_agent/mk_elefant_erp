@@ -1,0 +1,20 @@
+#!/bin/bash
+
+#
+# mk_elefant_erp.sh V01.001: 
+#		Check_mk plugin to check response time for Elefant ERP. To be used from web server
+#
+# 2012-07-31 FLX f@qsol.ro
+#	- First version, based on PHP script from Bunt
+#
+#
+
+CHECK_CMD="/root/qsol/scripts/check_erp.php"
+
+if [[ -x $CHECK_CMD ]]; then
+
+	# Check if elefant ERP is running and the answer time
+	echo "<<<elefant_erp>>>"
+#	time -p $CHECK_CMD 2>&1
+	{ time -p $CHECK_CMD; } 2>&1
+fi

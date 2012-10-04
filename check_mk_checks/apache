@@ -1,0 +1,387 @@
+#!/usr/bin/python
+# -*- encoding: utf-8; py-indent-offset: 4 -*-
+# +------------------------------------------------------------------+
+# |             ____ _               _        __  __ _  __           |
+# |            / ___| |__   ___  ___| | __   |  \/  | |/ /           |
+# |           | |   | '_ \ / _ \/ __| |/ /   | |\/| | ' /            |
+# |           | |___| | | |  __/ (__|   <    | |  | | . \            |
+# |            \____|_| |_|\___|\___|_|\_\___|_|  |_|_|\_\           |
+# |                                                                  |
+# | Copyright Mathias Kettner 2012             mk@mathias-kettner.de |
+# +------------------------------------------------------------------+
+#
+# This file is part of Check_MK.
+# The official homepage is at http://mathias-kettner.de/check_mk.
+#
+# check_mk is free software;  you can redistribute it and/or modify it
+# under the  terms of the  GNU General Public License  as published by
+# the Free Software Foundation in version 2.  check_mk is  distributed
+# in the hope that it will be useful, but WITHOUT ANY WARRANTY;  with-
+# out even the implied warranty of  MERCHANTABILITY  or  FITNESS FOR A
+# PARTICULAR PURPOSE. See the  GNU General Public License for more de-
+# ails.  You should have  received  a copy of the  GNU  General Public
+# License along with GNU Make; see the file  COPYING.  If  not,  write
+# to the Free Software Foundation, Inc., 51 Franklin St,  Fifth Floor,
+# Boston, MA 02110-1301 USA.
+
+#
+# 2012-07-06 FLX f@qsol.ro
+#    - started to modify an already modified mysql check
+#
+
+# <<<apache>>>
+#
+#                      Apache Server Status for localhost
+#
+#   Server Version: Apache/2.2.19 (Unix) mod_ssl/2.2.19
+#          OpenSSL/0.9.8e-fips-rhel5 mod_auth_passthrough/2.1 mod_bwlimited/1.4
+#          FrontPage/5.0.2.2635 mod_python/3.3.1 Python/2.4.3 mod_perl/2.0.5
+#          Perl/v5.8.8
+#
+#   Server Built: Sep 2 2011 14:15:13
+#     _________________________________________________________________
+#
+#   Current Time: Friday, 06-Jul-2012 23:32:25 EEST
+#   Restart Time: Wednesday, 13-Jun-2012 19:57:49 EEST
+#   Parent Server Generation: 99
+#   Server uptime: 23 days 3 hours 34 minutes 35 seconds
+#   Total accesses: 55873902 - Total Traffic: 1288.8 GB
+#   CPU Usage: u59.14 s182.75 cu862.68 cs0 - .0552% CPU load
+#   27.9 requests/sec - 0.7 MB/second - 24.2 kB/request
+#   68 requests currently being processed, 9 idle workers
+#
+#K_WKKKKKKCK_K.GK.KKGCWW...K..KGK........K...K..G..G.G.GK.....W..
+#RR..K.._K....W......._K.....W...KK.._.K._...KKG..W.W..K...RKKK..
+#.K...KKKKW.......W..KC.............__.KK._...KK........KRK.K....
+#................................................................
+#................................................................
+#................................................................
+#................................................................
+#................................................................
+#................................................................
+#................................................................
+#................................................................
+#................................................................
+#................................................................
+#................................................................
+#................................................................
+#................................................................
+#
+#   Scoreboard Key:
+#   "_" Waiting for Connection, "S" Starting up, "R" Reading Request,
+#   "W" Sending Reply, "K" Keepalive (read), "D" DNS Lookup,
+#   "C" Closing connection, "L" Logging, "G" Gracefully finishing,
+#   "I" Idle cleanup of worker, "." Open slot with no current process
+
+def inventory_apache(info):
+    if len(info) > 20: # should be at least 20 lines
+        return [(None, {})]
+
+# RRD uses SI  units: (KB = 1000 B)        
+def human_to_bytes(value, uom):
+    #sys.stderr.write("uom %s : value %s\n" % (uom, value))
+    if uom == 'KB':
+        return float(value) * 1000
+    elif uom == 'MB':
+        return float(value) * 1000 * 1000
+    elif uom == 'GB':
+        return float(value) * 1000 * 1000 * 1000
+    elif uom == 'TB':
+        return float(value) * 1000 * 1000 * 1000 * 1000
+    else:
+        return float(value)
+
+
+# Apache mod_status uses 1024 based units (/home/cpeasyapache/src/httpd-2.2.21/modules/generators/mod_status.c)
+def bytes_to_human(value):
+    fval = float(value)
+    #sys.stderr.write("uom %s : value %s\n" % (uom, value))
+
+    if fval >= 1024*1024*1024:
+        sval =  "%.2fGB" % (fval/(1024*1024*1024))
+    elif fval >= 1024*1024:
+        sval =  "%.2fMB" % (fval/(1024*1024))
+    elif fval >= 1024:
+        sval =  "%.2fKB" % (fval/(1024))
+    else:
+        sval = "%d" % fval
+    return sval
+
+    
+#   .----------------------------------------------------------------------.
+#   |                                                                      |
+#   |      Apache Access -> Total accesses/Total Traffic                   |
+#   |                                                                      |
+#   '----------------------------------------------------------------------'
+#   Total accesses: 55873902 - Total Traffic: 1288.8 GB
+
+def check_apache_access(_no_item, params, info):
+    for line in info:
+        if line[0] == "Total":
+            #sys.stderr.write("line %s - Total %s\n" % (line, line[0]))
+            crt_accesses = int(line[2])
+            crt_traffic = float(line[6])
+            uom = line[7]
+            break
+        else:
+            #sys.stderr.write("---line %s - NO Total %s\n" % (line, line[0]))
+            pass
+
+    #sys.stderr.write("Access %s - Traffic %s - Uom %s\n" % (crt_accesses, crt_traffic, uom))
+    crt_traffic = human_to_bytes(crt_traffic, uom)
+    #sys.stderr.write("Access %s - Traffic %s - Uom %s\n" % (crt_accesses, crt_traffic, uom))
+
+    crt_time = time.time()
+    timedif, accesses = get_counter("apache.accesses.accesses", crt_time, long(crt_accesses))
+    timedif, traffic = get_counter("apache.accesses.traffic", crt_time, long(crt_traffic))
+
+    infos = []
+    perfdata = []
+    status = 0
+
+    for value, what, format, unit, convert, maxval in [
+        ( accesses,  "Accesses",   "%d",   "/s", "",  None ),
+        ( traffic,   "Traffic",  "%s",   "/s", "B", None ),        # Bytes gets converted in human values
+        ]:
+
+        if convert == "B":
+            human_value = bytes_to_human(value)
+        else:
+            human_value = value
+        
+        infos.append(("%s "+format + "%s") % (what, human_value, unit))
+        if what in params:
+            warn, crit = params[what]
+            #sys.stderr.write("what %s : w %s c %s\n" % (what, warn, crit))
+
+            if value >= crit:
+                status = 2
+                infos[-1] += "(!!)"
+            elif value >= warn:
+                status = max(status, 1)
+                infos[-1] += "(!)"
+        else:
+            warn, crit = None, None
+        perfdata.append((what, value, warn, crit, 0, maxval))
+
+    infotext = " - " + ", ".join(infos)
+    return (status, nagios_state_names[status] + infotext, perfdata) 
+
+check_info['apache.access'] = {
+    "check_function"          : check_apache_access,
+    "inventory_function"      : inventory_apache,
+    "service_description"     : "Apache Accesses",
+    "has_perfdata"            : True,
+    "group"                   : "apache_access",
+}
+
+
+#   .----------------------------------------------------------------------.
+#   |                                                                      |
+#   |      Apache CPU Usage ->  u59.14 s182.75                             |
+#   |                                                                      |
+#   '----------------------------------------------------------------------'
+#   CPU Usage: u59.14 s182.75 cu862.68 cs0 - .0552% CPU load
+
+def check_apache_cpu_usage(_no_item, params, info):
+    for line in info:
+        if line[0] == "CPU":
+            #sys.stderr.write("line %s - CPU %s\n" % (line, line[0]))
+            usage_user = float(line[2][1:])
+            usage_system = float(line[3][1:])
+            break
+        else:
+            #sys.stderr.write("---line %s - NO Total %s\n" % (line, line[0]))
+            pass
+
+    #sys.stderr.write("usage_user %s - usage_system %s\n" % (usage_user, usage_system))
+
+    infos = []
+    perfdata = []
+    status = 0
+
+    for value, what, format, unit, convert, maxval in [
+        ( usage_user,   "User",   "%.2f",   "%", "",  None ),
+        ( usage_system, "System", "%.2f",   "%", "", None ),        # Bytes gets converted in human values
+        ]:
+
+        if convert == "B":
+            human_value = bytes_to_human(value)
+        else:
+            human_value = value
+        
+        infos.append(("%s "+format + "%s") % (what, human_value, unit))
+        if what in params:
+            warn, crit = params[what]
+            #sys.stderr.write("what %s : w %s c %s\n" % (what, warn, crit))
+
+            if value >= crit:
+                status = 2
+                infos[-1] += "(!!)"
+            elif value >= warn:
+                status = max(status, 1)
+                infos[-1] += "(!)"
+        else:
+            warn, crit = None, None
+        perfdata.append((what, value, warn, crit, 0, maxval))
+
+    infotext = " - " + ", ".join(infos)
+    return (status, nagios_state_names[status] + infotext, perfdata) 
+
+check_info['apache.cpu_usage'] = {
+    "check_function"          : check_apache_cpu_usage,
+    "inventory_function"      : inventory_apache,
+    "service_description"     : "Apache CPU Usage",
+    "has_perfdata"            : True,
+    "group"                   : "apache_cpu_usage",
+}
+
+#   .----------------------------------------------------------------------.
+#   |                                                                      |
+#   |      Apache Requests ->  50 requests currently being processed, 24 idle workers                   |
+#   |                                                                      |
+#   '----------------------------------------------------------------------'
+#   68 requests currently being processed, 9 idle workers
+def check_apache_requests(_no_item, params, info):
+    for line in info:
+        if (len(line) >= 8) and (line[2] == "currently"):
+            #sys.stderr.write("line -%s- -%s-n" % (line, line[2]))
+            requests = int(line[0])
+            workers = int(line[5])
+            break
+        else:
+            #sys.stderr.write("line -%s- -%s-n" % (line, line[2]))
+            pass
+
+    #sys.stderr.write("--- Line: -%s- -%s- -%s-\n" % (line, requests, workers))
+
+    infos = []
+    perfdata = []
+    status = 0
+
+    for value, what, format, unit, convert, minval, maxval in [
+        ( requests,   "Requests",     "%d",   "", "",  0, None ),
+        ( workers,    "Idle Workers", "%d",   "", "", 0, None ),        # Bytes gets converted in human values
+        ]:
+
+        if convert == "B":
+            human_value = bytes_to_human(value)
+        else:
+            human_value = value
+        
+        infos.append(("%s "+format + "%s") % (what, human_value, unit))
+        if what in params:
+            warn, crit = params[what]
+            #sys.stderr.write("what %s : w %s c %s\n" % (what, warn, crit))
+
+            if value >= crit:
+                status = 2
+                infos[-1] += "(!!)"
+            elif value >= warn:
+                status = max(status, 1)
+                infos[-1] += "(!)"
+        else:
+            warn, crit = None, None
+        perfdata.append((what, value, warn, crit, minval, maxval))
+
+    infotext = " - " + ", ".join(infos)
+    return (status, nagios_state_names[status] + infotext, perfdata) 
+
+check_info['apache.requests'] = {
+    "check_function"          : check_apache_requests,
+    "inventory_function"      : inventory_apache,
+    "service_description"     : "Apache Requests",
+    "has_perfdata"            : True,
+    "group"                   : "apache_requests",
+}
+
+
+#   .----------------------------------------------------------------------.
+#   |                                                                      |
+#   |      Apache Scoreboard ->  Worker status Detaliat ca la MYSQL  QPS                   |
+#   |                                                                      |
+#   '----------------------------------------------------------------------'
+def check_apache_scoreboard(_no_item, params, info):
+    # Search for first non empty line after "68 requests currently being processed, 9 idle workers"
+    for i in range(len(info)):
+        line = info[i]
+        if (len(line) >= 8) and (line[2] == "currently"):
+            poz = i+1;
+            break
+ 
+    #sys.stderr.write("line -%s- -%s-\n" % (info[poz], info[poz][0]))
+    scoreboard = ''
+    
+    #  Apped lines until a line with  "Scoreboard Key:" is found
+    for line in info[poz:]:
+        if (len(line) >= 2) and (line[0] == "Scoreboard"):
+            break
+        scoreboard += ''.join(line)
+    
+    #sys.stderr.write("--- score: -%s-\n" % (scoreboard))
+    
+#   "_" Waiting for Connection, "S" Starting up, "R" Reading Request,
+#   "W" Sending Reply, "K" Keepalive (read), "D" DNS Lookup,
+#   "C" Closing connection, "L" Logging, "G" Gracefully finishing,
+#   "I" Idle cleanup of worker, "." Open slot with no current process
+    
+    waiting = scoreboard.count('_')
+    starting = scoreboard.count('S')
+    reading = scoreboard.count('R')
+    sending = scoreboard.count('W')
+    keepalive = scoreboard.count('K')
+    dns = scoreboard.count('D')
+    closing = scoreboard.count('C')
+    logging = scoreboard.count('L')
+    gracefully = scoreboard.count('G')
+    idle = scoreboard.count('I')
+    open_slot = scoreboard.count('.')
+  
+    infos = []
+    perfdata = []
+    status = 0
+
+    for value, what, format, unit, convert, minval, maxval in [
+        ( waiting,      "Waiting for Connection", "%d",   "", "",  0, None ),
+        ( starting,     "Starting up",            "%d",   "", "",  0, None ),
+        ( reading,      "Reading Request",        "%d",   "", "",  0, None ),
+        ( sending,      "Sending Reply",          "%d",   "", "",  0, None ),
+        ( keepalive,    "Keepalive",              "%d",   "", "",  0, None ),
+        ( dns,          "DNS Lookup",             "%d",   "", "",  0, None ),
+        ( closing,      "Closing connection",     "%d",   "", "",  0, None ),
+        ( logging,      "Logging",                "%d",   "", "",  0, None ),
+        ( gracefully,   "Gracefully finishing",   "%d",   "", "",  0, None ),
+        ( idle,         "Idle cleanup",           "%d",   "", "",  0, None ),
+        ( open_slot,    "Open slot",              "%d",   "", "",  0, None ),
+        ]:
+
+        if convert == "B":
+            human_value = bytes_to_human(value)
+        else:
+            human_value = value
+        
+        infos.append(("%s "+format + "%s") % (what, human_value, unit))
+        if what in params:
+            warn, crit = params[what]
+            #sys.stderr.write("what %s : w %s c %s\n" % (what, warn, crit))
+
+            if value >= crit:
+                status = 2
+                infos[-1] += "(!!)"
+            elif value >= warn:
+                status = max(status, 1)
+                infos[-1] += "(!)"
+        else:
+            warn, crit = None, None
+        perfdata.append((what, value, warn, crit, minval, maxval))
+
+    infotext = " - " + ", ".join(infos)
+    return (status, nagios_state_names[status] + infotext, perfdata) 
+
+check_info['apache.scoreboard'] = {
+    "check_function"          : check_apache_scoreboard,
+    "inventory_function"      : inventory_apache,
+    "service_description"     : "Apache Scoreboard",
+    "has_perfdata"            : True,
+    "group"                   : "apache_scoreboard",
+}

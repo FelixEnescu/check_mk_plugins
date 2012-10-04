@@ -1,0 +1,145 @@
+#!/bin/bash
+#
+
+# Script to install check_mk 
+#
+# Version 1.1
+#
+# 2012-10-04 FLX f@qsol.ro
+#	- Modified to be run on target machine
+#
+# 2012-09-27 FLX f@qsol.ro
+#	- Modified to be run on target machine
+#
+# 2012-09-13 FLX f@qsol.ro
+#	- First draft
+#
+
+
+#####################################################################
+#
+#	Global Configure section
+#
+#####################################################################
+
+#http://mathias-kettner.de/download/check_mk-agent-1.2.0p3-1.noarch.rpm
+mk_agent_rpm='check_mk-agent-1.2.0p3-1.noarch.rpm'
+mk_site='http://mathias-kettner.de/download'
+
+monitor_site='monitor.qsol.ro'
+monitor_ip='89.238.194.86'
+monitor_dir='icinga/deploy'
+monitor_user='deploy'
+monitor_pass='TPF systems'
+
+agent='check_mk_agent'
+
+# mk_apache  mk_exim  mk_mysql  mk_nginx  mk_zmailer
+plugins='mk_apache  mk_exim  mk_mysql'
+plugins_all='mk_apache  mk_exim  mk_mysql  mk_nginx  mk_zmailer'
+
+working_dir='/root/qsol/check_mk'
+agent_install_dir='/usr/bin'
+plugin_install_dir='/usr/lib/check_mk_agent/plugins'
+
+#####################################################################
+
+
+
+
+
+cd /root
+mkdir qsol
+cd qsol
+mkdir check_mk
+cd check_mk
+
+crt_dir=`pwd`
+
+if [ "$crt_dir" != "$working_dir" ] ; then
+	echo -e "wrong working dir $crt_dir\n"
+	exit 127
+fi
+
+if which wget ; then
+	echo -e "wget found\n"
+else
+	yum install wget
+fi
+
+if which wget ; then
+	echo "wget installation ok"
+else
+	echo "wget installation failed"
+	exit 127
+fi
+
+if wget $mk_site/$mk_agent_rpm; then
+	echo -e "Got check_mk agent rpm\n"
+else 
+	echo -e "wget $mk_site/$mk_agent_rpm failed.\n"
+	exit 127
+fi
+
+yum install --assumeyes xinetd
+ 
+if yum localinstall --nogpgcheck --assumeyes $mk_agent_rpm; then
+	echo -e "Installed check_mk agent\n"
+else
+	echo -e "Error installing check_mk agent\n"
+	exit 127
+fi
+
+# Get our version of check_mk_agent
+if wget --user=$monitor_user --password="$monitor_pass" $monitor_site/$monitor_dir/$agent; then
+	echo -e "Got QSol check_mk_agent\n"
+	cp $agent $agent_install_dir
+	chmod +x $agent_install_dir/$agent
+else 
+	echo -e "wget $monitor_site/$monitor_dir/$agent failed.\n"
+	exit 127
+fi
+
+# Get our plugins
+for plugin in $plugins; do
+	if wget --user=$monitor_user --password="$monitor_pass" $monitor_site/$monitor_dir/$plugin; then
+		echo -e "Got QSol plugin $plugin\n"
+		cp $plugin $plugin_install_dir/
+		chmod +x $plugin_install_dir/$plugin
+	else 
+		echo -e "wget $monitor_site/$monitor_dir/$plugin failed.\n"
+		exit 127
+	fi
+done
+
+if which apachectl || which apache2ctl || [ -x /usr/local/apache/bin/apachectl ]; then
+	echo '<<<apache found>>>'
+	
+	if yum install --assumeyes lynx ; then
+		echo -e "Installed lynx\n"
+	else
+		echo -e "Error installing lynx\n"
+		exit 127
+	fi
+fi
+
+if which mysql; then
+	echo '<<<mysql found>>>'
+	if [ -f "/root/.my.cnf" ] ; then
+		echo -e ".my.cnf already exists\n"
+	else
+		echo -e "[client]\n" >> /root/.my.cnf
+		echo -e "user=\"USER\"\n" >> /root/.my.cnf
+		echo -e "password=\"PASSWORD\"\n" >> /root/.my.cnf
+		chmod 0600 /root/.my.cnf
+		echo -e "Template .my.cnf created. Be sure to edit it."
+	fi
+fi
+
+iptables -I INPUT -s $monitor_ip -p tcp --dport 6556 -j ACCEPT 
+
+exit 0
+
+
+
+

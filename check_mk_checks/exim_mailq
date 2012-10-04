@@ -1,0 +1,139 @@
+#!/usr/bin/python
+# -*- encoding: utf-8; py-indent-offset: 4 -*-
+# +------------------------------------------------------------------+
+# |             ____ _               _        __  __ _  __           |
+# |            / ___| |__   ___  ___| | __   |  \/  | |/ /           |
+# |           | |   | '_ \ / _ \/ __| |/ /   | |\/| | ' /            |
+# |           | |___| | | |  __/ (__|   <    | |  | | . \            |
+# |            \____|_| |_|\___|\___|_|\_\___|_|  |_|_|\_\           |
+# |                                                                  |
+# | Copyright Mathias Kettner 2012             mk@mathias-kettner.de |
+# +------------------------------------------------------------------+
+#
+# This file is part of Check_MK.
+# The official homepage is at http://mathias-kettner.de/check_mk.
+#
+# check_mk is free software;  you can redistribute it and/or modify it
+# under the  terms of the  GNU General Public License  as published by
+# the Free Software Foundation in version 2.  check_mk is  distributed
+# in the hope that it will be useful, but WITHOUT ANY WARRANTY;  with-
+# out even the implied warranty of  MERCHANTABILITY  or  FITNESS FOR A
+# PARTICULAR PURPOSE. See the  GNU General Public License for more de-
+# ails.  You should have  received  a copy of the  GNU  General Public
+# License along with GNU Make; see the file  COPYING.  If  not,  write
+# to the Free Software Foundation, Inc., 51 Franklin St,  Fifth Floor,
+# Boston, MA 02110-1301 USA.
+
+# Author: Felix Enescu <f@qsol.ro>
+
+# Example output from agent:
+#
+#<<<exim_mailq>>>
+#
+#Count  Volume  Oldest  Newest  Domain
+#-----  ------  ------  ------  ------
+#
+#    1   293KB      4h      4h  antena4.ro
+#    1    28KB     57h     57h  dezvoltare-afaceri.dap.ro
+#    1    8806     25h     25h  edicon.ro
+#    1    8704     31h     31h  hat.ro
+#    1    5324     32h     32h  hhh.ro
+#    2   190KB     56h     33h  mail123.org
+#    3    95KB     56h      7h  mailinformer.ro
+#    2    4300     31h     29h  mailpop.com
+#    8    17KB     37h     29h  malelinks.net
+#    1    8908     21h     21h  medic-line.ro
+#    1    2662     58h     58h  rssgraffiti.com
+#    2   124KB     25h     21h  starline-parts.ro
+#    1  1229KB     56h     56h  stiri.rol.ro
+#    1   758KB     35h     35h  vestimentaria.ro
+#    1    85KB     33h     33h  waberers.com
+#    3    11KB     28h     27h  yahoo.cm
+#    1    4915     33h     33h  yahoo.com
+#---------------------------------------------------------------
+#   31  2872KB     58h      4h  TOTAL
+#
+# 
+
+#check_parameters = [
+#    ( {"length": (10, 20)}, [ "elefant" ], [ "Exim Queue" ]),
+#    ( {"size": (1000000, 20000000)}, [ "elefant" ], [ "Exim Queue" ]),
+#]
+
+def inventory_exim_mailq(info):
+    if len(info) > 0 and info[0] != '':
+		return [(None, {})]
+
+
+def exim_mailq_to_bytes(value):
+    uom = value[-2:]
+    #sys.stderr.write("uom %s : value %s\n" % (uom, value))
+
+    if uom == 'KB':
+        return int(value[:-2]) * 1024
+    elif uom == 'MB':
+        return int(value[:-2]) * 1024 * 1024
+    else:
+        return int(value)
+
+
+def bytes_to_human(value):
+    fval = float(value)
+    #sys.stderr.write("uom %s : value %s\n" % (uom, value))
+
+    if fval >= 1024*1024*1024:
+        sval =  "%.2fG" % (fval/(1024*1024*1024))
+    elif fval >= 1024*1024:
+        sval =  "%.2fM" % (fval/(1024*1024))
+    elif fval >= 1024:
+        sval =  "%.2fK" % (fval/(1024))
+    else:
+		sval = "%d" % fval
+    return sval
+
+def check_exim_mailq(item, params, info):
+    line = info[-1]
+    qlen = int(line[0])
+    qsize = exim_mailq_to_bytes(line[1])
+
+    #sys.stderr.write("line %s : qlen %s qsize %s \n" % (line, qlen, qsize))
+
+    infos = []
+    perfdata = []
+    status = 0
+
+    for value, what, format, unit, maxval in [
+        ( qlen,		"length",	"%d",	"",	None ),
+        ( qsize,	"size",		"%s",	"B",	None )]:	# when bytes_to_human is required, returns string
+
+	if unit == "B":
+	    human_value = bytes_to_human(value)
+	else:
+	    human_value = value
+
+        infos.append(("%s "+format + "%s") % (what, human_value, unit))
+        if what in params:
+            warn, crit = params[what]
+            #sys.stderr.write("what %s : w %s c %s\n" % (what, warn, crit))
+
+            if value >= crit:
+                status = 2
+                infos[-1] += "(!!)"
+            elif value >= warn:
+                status = max(status, 1)
+                infos[-1] += "(!)"
+        else:
+            warn, crit = None, None
+        perfdata.append((what, value, warn, crit, 0, maxval))
+
+    infotext = " - " + ", ".join(infos)
+    return (status, nagios_state_names[status] + infotext, perfdata) 
+
+
+check_info['exim_mailq'] = {
+    "check_function"          : check_exim_mailq,
+    "inventory_function"      : inventory_exim_mailq,
+    "service_description"     : "Exim Queue",
+    "has_perfdata"            : True,
+    "group"                   : "mailqueue_length",
+}

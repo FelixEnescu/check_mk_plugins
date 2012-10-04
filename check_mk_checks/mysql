@@ -1,0 +1,526 @@
+#!/usr/bin/python
+# -*- encoding: utf-8; py-indent-offset: 4 -*-
+# +------------------------------------------------------------------+
+# |             ____ _               _        __  __ _  __           |
+# |            / ___| |__   ___  ___| | __   |  \/  | |/ /           |
+# |           | |   | '_ \ / _ \/ __| |/ /   | |\/| | ' /            |
+# |           | |___| | | |  __/ (__|   <    | |  | | . \            |
+# |            \____|_| |_|\___|\___|_|\_\___|_|  |_|_|\_\           |
+# |                                                                  |
+# | Copyright Mathias Kettner 2012             mk@mathias-kettner.de |
+# +------------------------------------------------------------------+
+#
+# This file is part of Check_MK.
+# The official homepage is at http://mathias-kettner.de/check_mk.
+#
+# check_mk is free software;  you can redistribute it and/or modify it
+# under the  terms of the  GNU General Public License  as published by
+# the Free Software Foundation in version 2.  check_mk is  distributed
+# in the hope that it will be useful, but WITHOUT ANY WARRANTY;  with-
+# out even the implied warranty of  MERCHANTABILITY  or  FITNESS FOR A
+# PARTICULAR PURPOSE. See the  GNU General Public License for more de-
+# ails.  You should have  received  a copy of the  GNU  General Public
+# License along with GNU Make; see the file  COPYING.  If  not,  write
+# to the Free Software Foundation, Inc., 51 Franklin St,  Fifth Floor,
+# Boston, MA 02110-1301 USA.
+
+# <<<mysql>>>
+# Aborted_clients 0
+# Aborted_connects        15
+# Binlog_cache_disk_use   0
+# Binlog_cache_use        0
+# Binlog_stmt_cache_disk_use      0
+# Binlog_stmt_cache_use   0
+# Bytes_received  7198841
+# Bytes_sent      19266624
+# Com_admin_commands      200
+# Com_assign_to_keycache  0
+# Com_alter_db    0
+# Com_alter_db_upgrade    0
+
+
+
+
+#   .----------------------------------------------------------------------.
+#   |                  _   _      _                                        |
+#   |                 | | | | ___| |_ __   ___ _ __ ___                    |
+#   |                 | |_| |/ _ \ | '_ \ / _ \ '__/ __|                   |
+#   |                 |  _  |  __/ | |_) |  __/ |  \__ \                   |
+#   |                 |_| |_|\___|_| .__/ \___|_|  |___/                   |
+#   |                              |_|                                     |
+#   '----------------------------------------------------------------------'
+
+def inventory_mysql(info):
+    if len(info) > 200: # should be at least 321 line
+	return [(None, {})]
+
+def parse_mysql(info):
+    values = {}
+    for line in info:
+        if len(line) == 2:
+            varname, value = line
+            try:
+                value = int(value)
+            except:
+                pass
+        else:
+            varname = line[0]
+            value = None
+
+        values[varname] = value
+    return values
+
+
+#   .----------------------------------------------------------------------.
+#   |                                                                      |
+#   |      QPS                                                             |
+#   |                                                                      |
+#   '----------------------------------------------------------------------'
+
+
+def check_mysql_qps(_no_item, params, info):
+    values = parse_mysql(info)
+
+    crt_time = time.time()
+    
+    timedif, qcache_hits = get_counter("mysql.key_reads.Qcache_hits", crt_time, values["Qcache_hits"])
+    timedif, com_select = get_counter("mysql.key_reads.Com_select", crt_time, values["Com_select"])
+    timedif, com_insert = get_counter("mysql.key_reads.Com_insert", crt_time, values["Com_insert"])
+    timedif, com_update = get_counter("mysql.key_reads.Com_update", crt_time, values["Com_update"])
+    timedif, com_delete = get_counter("mysql.key_reads.Com_delete", crt_time, values["Com_delete"])
+    timedif, com_replace = get_counter("mysql.key_reads.Com_replace", crt_time, values["Com_replace"])
+    timedif, com_commit = get_counter("mysql.key_reads.Com_commit", crt_time, values["Com_commit"])
+    timedif, com_rollback = get_counter("mysql.key_reads.Com_rollback", crt_time, values["Com_rollback"])
+
+    infotext = " - %d Qcache_hits/s, %d Com_select/s, %d Com_insert/s, %d Com_update/s, %d Com_delete/s, %d Com_replace/s, %d Com_commit/s, %d Com_rollback/s" % (
+        qcache_hits, com_select, com_insert, com_update, com_delete, com_replace, com_commit, com_rollback)
+
+    infos = []
+    perfdata = []
+    status = 0
+
+    for value, what, format, unit, maxval in [
+        ( qcache_hits,   "Qcache_hits",  "%d",   "/s", None ),
+        ( com_select,   "Com_select",   "%d",   "/s", None ),
+        ( com_insert,   "Com_insert",   "%d",   "/s", None ),
+        ( com_update,   "Com_update",   "%d",   "/s", None ),
+        ( com_delete,   "Com_delete",   "%d",   "/s", None ),
+        ( com_replace,  "Com_replace",  "%d",   "/s", None ),
+        ( com_commit,   "Com_commit",   "%d",   "/s", None ),
+        ( com_rollback, "Com_rollback", "%d",   "/s", None ),
+        ]:
+        infos.append((format + " %s%s") % (value, what, unit))
+        if what in params:
+            warn, crit = params[what]
+            if value >= crit:
+                status = 2
+                infos[-1] += "(!!)"
+            elif value >= warn:
+                status = max(status, 1)
+                infos[-1] += "(!)"
+        else:
+            warn, crit = None, None
+        perfdata.append((what, value, warn, crit, 0, maxval))
+
+    infotext = " - " + ", ".join(infos)
+    return (status, nagios_state_names[status] + infotext, perfdata) 
+
+
+check_info['mysql.qps'] = {
+    "check_function"          : check_mysql_qps,
+    "inventory_function"      : inventory_mysql,
+    "service_description"     : "MySQL QPS",
+    "has_perfdata"            : True,
+    "group"                   : "mysql_qps",
+}
+
+
+
+
+
+#   .----------------------------------------------------------------------.
+#   |                                                                      |
+#   |      Table_locks_immediate/Table_locks_waited                                      |
+#   |                                                                      |
+#   '----------------------------------------------------------------------'
+
+# params:
+# { "locks_immediate" : (20, 40),
+#    "locks_waited" : (100, 400), 
+#    "ratio" : (3, 5 ),
+# }
+
+def check_mysql_table_locks(_no_item, params, info):
+    values = parse_mysql(info)
+
+    crt_time = time.time()
+    timedif1, locks_immediate = get_counter("mysql.table_locks.immediate", crt_time, values["Table_locks_immediate"])
+    timedif2, locks_waited = get_counter("mysql.table_locks.waited", crt_time, values["Table_locks_waited"])
+
+    if locks_immediate != 0:
+	ratio = (100*locks_waited)/locks_immediate
+    else:
+	ratio = 0
+
+    infotext = " - %d locks immediate/s, %d locks waited/s, %.2f miss ratio" % (
+        locks_immediate, locks_waited, ratio)
+
+    infos = []
+    perfdata = []
+    status = 0
+
+    for value, what, format, unit, maxval in [
+        ( locks_immediate,"immediate",   "%d",   "/s", None ),
+        ( locks_waited, "waited",    "%d",   "/s", None ),
+        ( ratio,"miss ratio", "%.2f", "", 100)]:
+        infos.append((format + " %s%s") % (value, what, unit))
+        if what in params:
+            warn, crit = params[what]
+	    #sys.stderr.write("what %s : w %s c %s\n" % (what, warn, crit))
+
+            if value >= crit:
+                status = 2
+                infos[-1] += "(!!)"
+            elif value >= warn:
+                status = max(status, 1)
+                infos[-1] += "(!)"
+        else:
+            warn, crit = None, None
+        perfdata.append((what, value, warn, crit, 0, maxval))
+
+    infotext = " - " + ", ".join(infos)
+    return (status, nagios_state_names[status] + infotext, perfdata) 
+
+
+check_info['mysql.table_locks'] = {
+    "check_function"          : check_mysql_table_locks,
+    "inventory_function"      : inventory_mysql,
+    "service_description"     : "MySQL Table Locks",
+    "has_perfdata"            : True,
+    "group"                   : "mysql_table_locks",
+}
+
+
+
+#   .----------------------------------------------------------------------.
+#   |                                                                      |
+#   |      Threads                                                         |
+#   |                                                                      |
+#   '----------------------------------------------------------------------'
+
+# Threads_cached  61
+# Threads_connected       6
+# Threads_created 1853
+# Threads_running 2
+
+def check_mysql_threads(_no_item, params, info):
+    values = parse_mysql(info)
+
+    crt_time = time.time()
+
+    timedif, threads_created = get_counter("mysql.threads.threads_created", crt_time, values["Threads_created"])
+    threads_running = values["Threads_running"]
+    threads_connected = values["Threads_connected"]
+    threads_cached = values["Threads_cached"]
+
+
+    infotext = " - %d running, %d connected, %d cached, %d created/s" % (
+        threads_running, threads_connected, threads_cached, threads_created)
+
+    infos = []
+    perfdata = []
+    status = 0
+
+    for value, what, format, unit, maxval in [
+        ( threads_running,   "running",      "%d",   "",   None ),
+        ( threads_connected, "connected",    "%d",   "",   None ),
+        ( threads_cached,    "cached",       "%d",   "",   None ),
+        ( threads_created,   "created",      "%d",   "/s", None ),
+        ]:
+        infos.append((format + " %s%s") % (value, what, unit))
+        if what in params:
+            warn, crit = params[what]
+	    #sys.stderr.write("what %s : w %s c %s\n" % (what, warn, crit))
+
+            if value >= crit:
+                status = 2
+                infos[-1] += "(!!)"
+            elif value >= warn:
+                status = max(status, 1)
+                infos[-1] += "(!)"
+        else:
+            warn, crit = None, None
+        perfdata.append((what, value, warn, crit, 0, maxval))
+
+    infotext = " - " + ", ".join(infos)
+    return (status, nagios_state_names[status] + infotext, perfdata) 
+
+
+check_info['mysql.threads'] = {
+    "check_function"          : check_mysql_threads,
+    "inventory_function"      : inventory_mysql,
+    "service_description"     : "MySQL Threads",
+    "has_perfdata"            : True,
+    "group"                   : "mysql_threads",
+}
+
+#   .----------------------------------------------------------------------.
+#   |                                                                      |
+#   |      Open Tables                                                     |
+#   |                                                                      |
+#   '----------------------------------------------------------------------'
+
+# Open_tables     1792
+# Opened_tables   16648
+
+def check_mysql_open_tables(_no_item, params, info):
+    values = parse_mysql(info)
+
+    crt_time = time.time()
+
+    timedif, opened_tables = get_counter("mysql.open_tables.opened_tables", crt_time, values["Opened_tables"])
+    open_tables = values["Open_tables"]
+
+
+    infotext = " - %d open, %d opened/s" % (
+        open_tables, opened_tables)
+
+    infos = []
+    perfdata = []
+    status = 0
+
+    for value, what, format, unit, maxval in [
+        ( open_tables,   "open",      "%d",   "",   None ),
+        ( opened_tables, "opened",    "%d",   "/s", None ),
+        ]:
+        infos.append((format + " %s%s") % (value, what, unit))
+        if what in params:
+            warn, crit = params[what]
+	    #sys.stderr.write("what %s : w %s c %s\n" % (what, warn, crit))
+
+            if value >= crit:
+                status = 2
+                infos[-1] += "(!!)"
+            elif value >= warn:
+                status = max(status, 1)
+                infos[-1] += "(!)"
+        else:
+            warn, crit = None, None
+        perfdata.append((what, value, warn, crit, 0, maxval))
+
+    infotext = " - " + ", ".join(infos)
+    return (status, nagios_state_names[status] + infotext, perfdata) 
+
+
+check_info['mysql.open_tables'] = {
+    "check_function"          : check_mysql_open_tables,
+    "inventory_function"      : inventory_mysql,
+    "service_description"     : "MySQL Open Tables",
+    "has_perfdata"            : True,
+    "group"                   : "mysql_open_tables",
+}
+
+#   .----------------------------------------------------------------------.
+#   |                                                                      |
+#   |      Slow queries                                                    |
+#   |                                                                      |
+#   '----------------------------------------------------------------------'
+
+def check_mysql_slow_queries(_no_item, params, info):
+    values = parse_mysql(info)
+
+    crt_time = time.time()
+    timedif, slow_queries = get_counter("mysql.slow_queries", crt_time, values["Slow_queries"])
+
+    infotext = " - %d slow queries/s" % (
+        slow_queries)
+
+    infos = []
+    perfdata = []
+    status = 0
+
+    for value, what, format, unit, maxval in [
+        ( slow_queries,"slow queries",   "%d",   "/s", None ),
+        ]:
+        infos.append((format + " %s%s") % (value, what, unit))
+        if what in params:
+            warn, crit = params[what]
+	    #sys.stderr.write("what %s : w %s c %s\n" % (what, warn, crit))
+
+            if value >= crit:
+                status = 2
+                infos[-1] += "(!!)"
+            elif value >= warn:
+                status = max(status, 1)
+                infos[-1] += "(!)"
+        else:
+            warn, crit = None, None
+        perfdata.append((what, value, warn, crit, 0, maxval))
+
+    infotext = " - " + ", ".join(infos)
+    return (status, nagios_state_names[status] + infotext, perfdata) 
+
+
+check_info['mysql.slow_queries'] = {
+    "check_function"          : check_mysql_slow_queries,
+    "inventory_function"      : inventory_mysql,
+    "service_description"     : "MySQL Slow Queries",
+    "has_perfdata"            : True,
+    "group"                   : "mysql_slow_queries",
+}
+
+
+
+#   .----------------------------------------------------------------------.
+#   |                                                                      |
+#   |      Key_reads/Key_read_request                                      |
+#   |                                                                      |
+#   '----------------------------------------------------------------------'
+
+# params:
+# { "cache" : (20, 40),
+#    "disk" : (100, 400), 
+#    "ratio" : (3, 5 ),
+# }
+
+#Key_read_requests -> cache
+#Key_reads -> disk
+
+def check_mysql_key_reads(_no_item, params, info):
+    values = parse_mysql(info)
+
+    crt_time = time.time()
+    timedif1, cache = get_counter("mysql.key_reads.cache", crt_time, values["Key_read_requests"])
+    timedif2, disk = get_counter("mysql.key_reads.disk", crt_time, values["Key_reads"])
+
+    if cache != 0:
+	ratio = (100*disk)/cache
+    else:
+	ratio = 0
+
+    infotext = " - %d cache/s, %d disk/s, %.2f miss ratio" % (
+        cache, disk, ratio)
+
+    infos = []
+    perfdata = []
+    status = 0
+
+    for value, what, format, unit, maxval in [
+        ( cache,"cache",   "%d",   "/s", None ),
+        ( disk, "disk",    "%d",   "/s", None ),
+        ( ratio,"miss ratio", "%.2f", "", 100)]:
+        infos.append((format + " %s%s") % (value, what, unit))
+        if what in params:
+            warn, crit = params[what]
+            if value >= crit:
+                status = 2
+                infos[-1] += "(!!)"
+            elif value >= warn:
+                status = max(status, 1)
+                infos[-1] += "(!)"
+        else:
+            warn, crit = None, None
+        perfdata.append((what, value, warn, crit, 0, maxval))
+
+    infotext = " - " + ", ".join(infos)
+    return (status, nagios_state_names[status] + infotext, perfdata) 
+
+
+check_info['mysql.key_reads'] = {
+    "check_function"          : check_mysql_key_reads,
+    "inventory_function"      : inventory_mysql,
+    "service_description"     : "MySQL Key Reads",
+    "has_perfdata"            : True,
+    "group"                   : "mysql_key_reads",
+}
+
+
+
+
+
+#   .----------------------------------------------------------------------.
+#   |                ____                _                                 |
+#   |               / ___|  ___  ___ ___(_) ___  _ __  ___                 |
+#   |               \___ \ / _ \/ __/ __| |/ _ \| '_ \/ __|                |
+#   |                ___) |  __/\__ \__ \ | (_) | | | \__ \                |
+#   |               |____/ \___||___/___/_|\___/|_| |_|___/                |
+#   |                                                                      |
+#   '----------------------------------------------------------------------'
+
+# params:
+# { "running" : (20, 40),
+#    "total" : (100, 400), 
+#    "connections" : (3, 5 ),
+# }
+
+
+def check_mysql_sessions(_no_item, params, info):
+    values = parse_mysql(info)
+    total_sessions = values["Threads_connected"]
+    running_sessions = values["Threads_running"]
+    timedif, connections = get_counter("mysql.sessions", time.time(), values["Connections"])
+
+    infotext = " - %d sessions (%d running), %.2f connections/s" % (
+        total_sessions, running_sessions, connections)
+
+    infos = []
+    perfdata = []
+    status = 0
+    
+    for value, what, format, unit in [
+        ( total_sessions,   "total",       "%d",   "" ),
+        ( running_sessions, "running",     "%d",   "" ),
+        ( connections,      "connections", "%.2f", "/s")]:
+        infos.append((format + " %s%s") % (value, what, unit))
+        if what in params:
+            warn, crit = params[what]
+            if value >= crit:
+                status = 2
+                infos[-1] += "(!!)"
+            elif value >= warn:
+                status = max(status, 1)
+                infos[-1] += "(!)"
+        else:
+            warn, crit = None, None
+        perfdata.append((what, value, warn, crit))
+
+    infotext = " - " + ", ".join(infos)
+    return (status, nagios_state_names[status] + infotext, perfdata) 
+
+
+check_info['mysql.sessions'] = {
+    "check_function"          : check_mysql_sessions,
+    "inventory_function"      : inventory_mysql,
+    "service_description"     : "MySQL Daemon Sessions",
+    "has_perfdata"            : True,
+    "group"                   : "mysql_sessions",
+}
+
+
+#   .----------------------------------------------------------------------.
+#   |           ___                   ____  ____       ___ ___             |
+#   |          |_ _|_ __  _ __   ___ |  _ \| __ )     |_ _/ _ \            |
+#   |           | || '_ \| '_ \ / _ \| | | |  _ \ _____| | | | |           |
+#   |           | || | | | | | | (_) | |_| | |_) |_____| | |_| |           |
+#   |          |___|_| |_|_| |_|\___/|____/|____/     |___\___/            |
+#   |                                                                      |
+#   '----------------------------------------------------------------------'
+
+def inventory_mysql_iostat(info):
+    if len(info) > 200:
+        return [(None, {})]
+
+def check_mysql_iostat(item, params, info):
+    values = parse_mysql(info)
+    line = [ None, values["Innodb_data_read"] / 512, values["Innodb_data_written"] / 512]
+    return check_diskstat_line(time.time(), 'innodb_io', params, line)
+
+
+check_info['mysql.innodb_io'] = {
+    "includes"                : [ "diskstat.include" ],
+    "check_function"          : check_mysql_iostat,
+    "inventory_function"      : inventory_mysql_iostat,
+    "service_description"     : "MySQL Daemon InnoDB IO",
+    "has_perfdata"            : True,
+    "group"                   : "mysql_innodb_io",
+}

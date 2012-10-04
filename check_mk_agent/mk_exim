@@ -1,0 +1,13 @@
+#!/bin/bash
+
+# Check_mk plugin to do Exim mailqueue monitoring
+#
+#	Version 1.0
+#
+# 2012-07-01 FLX f@qsol.ro
+#
+
+if which exim >/dev/null 2>&1 && which exiqsumm >/dev/null 2>&1; then
+	echo '<<<exim_mailq>>>'
+	exim -bp | exiqsumm
+fi

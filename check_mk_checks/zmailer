@@ -1,0 +1,350 @@
+#!/usr/bin/python
+# -*- encoding: utf-8; py-indent-offset: 4 -*-
+
+#
+# 2012-09-23 FLX f@qsol.ro
+#    - started based on apache/mysql check
+#
+
+#<<<zmailer>>>
+#ZMailer SHM segment dump; Magic=0x33120006
+#Time_now                        1348404340
+#Block_creation_time             1346092580
+#SYS.Load-Avg-1-min-G                  0.05
+#SYS.Load-Avg-5-min-G                  0.04
+#
+#SYS.RouterMasterPID                   6111
+#SYS.RouterMasterStartTime       1348325047
+#SYS.RouterMasterStarts                  26
+#SYS.SchedulerMasterPID                6115
+#SYS.SchedulerMasterStartTime    1348325044
+#SYS.SchedulerMasterStarts               29
+#SC.SchedulerTimeserverPID             6116
+
+def inventory_zmailer(info):
+    if len(info) > 200: # should be at least 261 line
+        return [(None, {})]
+
+
+def parse_zmailer(info):
+    values = {}
+    for line in info:
+        if len(line) == 2:
+            varname, value = line
+            try:
+                value = int(value)
+            except ValueError:
+                pass
+        else:
+            varname = line[0]
+            value = None
+
+        values[varname] = value
+    return values
+
+    
+    
+def process_group(var_group_name, vars, params, info):
+        
+    values = parse_zmailer(info)
+    crt_time = time.time()
+
+    infos = []
+    perfdata = []
+    status = 0
+
+    for var_name in vars:
+
+        if var_name[-2:] == "-G":
+            # Gauge - instant value
+            # To check for -kB
+            value = values[var_name]
+            infos.append(("%s: %d") % (var_name, value))
+        else:
+            # Counter
+            # To check for -kB
+            timedif, value = get_counter(var_group_name + var_name, crt_time, values[var_name])
+            infos.append(("%s: %.2f/s") % (var_name, value))
+
+        if var_name in params:
+            warn, crit = params[var_name]
+            if value >= crit:
+                status = 2
+                infos[-1] += "(!!)"
+            elif value >= warn:
+                status = max(status, 1)
+                infos[-1] += "(!)"
+        else:
+            warn, crit = None, None
+        perfdata.append((var_name, value, warn, crit, 0, None))
+        sys.stderr.write("--- var_name: -%s- value: -%s- raw_value  %s- warn: -%s- crit: -%s-\n" % (var_name, value, values[var_name], warn, crit))
+
+    infotext = " - " + ", ".join(infos)
+    return (status, nagios_state_names[status] + infotext, perfdata) 
+
+    
+#   .----------------------------------------------------------------------.
+#   |                                                                      |
+#   |      SYS.*: Various top-level things                                 |
+#   |                                                                      |
+#   '----------------------------------------------------------------------'
+def check_zmailer_sys(_no_item, params, info):
+    var_group = "ZMAILER.SYS"
+    vars = [
+        "SYS.SpoolFreeSpace-kB-G",
+        "SYS.SpoolUsedSpace-kB-G",
+        "SYS.SpoolFreeFiles-G",
+        "SYS.SpoolUsedFiles-G",
+        "SYS.TportSpoolFreeSpace-kB-G",
+        "SYS.TportSpoolUsedSpace-kB-G",
+        "SYS.TportSpoolFreeFiles-G",
+        "SYS.TportSpoolUsedFiles-G",
+        "SYS.LogFreeSpace-kB-G",
+        "SYS.LogUsedSpace-kB-G",
+        "SYS.LogFreeFiles-G",
+        "SYS.LogUsedFiles-G",
+    ]
+    return process_group(var_group, vars, params, info)
+
+check_info['zmailer.SYS'] = {
+    "check_function"          : check_zmailer_sys,
+    "inventory_function"      : inventory_zmailer,
+    "service_description"     : "ZMailer SYS",
+    "has_perfdata"            : True,
+    "group"                   : "zmailer_sys",
+}
+
+    
+#   .----------------------------------------------------------------------.
+#   |                                                                      |
+#   |      SS.*: SmtpServer counters and gauges                            |
+#   |                                                                      |
+#   '----------------------------------------------------------------------'
+def check_zmailer_ss(_no_item, params, info):
+    var_group = "ZMAILER.SS"
+    vars = [
+        "SS.Processes-G",
+        "SS.ProcessForks",
+        "SS.SMTPconnects",
+        "SS.SMTPcommands",
+        "SS.SMTPcommands-unknown",
+        "SS.IncomingClientPipelines",
+        "SS.SMTP_HELO",
+        "SS.SMTP_EHLO",
+        "SS.SMTP_NOOP",
+        "SS.SMTP_RSET",
+        "SS.SMTP_HELP",
+        "SS.SMTP_MAIL",
+        "SS.SMTP_MAIL_ok",
+        "SS.SMTP_MAIL_bad",
+        "SS.SMTP_RCPT",
+        "SS.SMTP_RCPT_ok",
+        "SS.SMTP_RCPT_bad",
+        "SS.SMTP_DATA",
+        "SS.SMTP_DATA_ok",
+        "SS.SMTP_DATA_bad",
+        "SS.SMTP_BDAT",
+        "SS.SMTP_BDAT_ok",
+        "SS.SMTP_DATA-kB",
+        "SS.SMTP_BDAT-kB",
+        "SS.SMTP_input_spool-kB",
+        "SS.ReceivedMessages",
+        "SS.ReceivedRecipients",
+        "SS.TransmittedMessages",
+        "SS.TransmittedRecipients",
+    ]
+    return process_group(var_group, vars, params, info)
+
+check_info['zmailer.SS'] = {
+    "check_function"          : check_zmailer_ss,
+    "inventory_function"      : inventory_zmailer,
+    "service_description"     : "ZMailer SS",
+    "has_perfdata"            : True,
+    "group"                   : "zmailer_ss",
+}
+
+
+#   .----------------------------------------------------------------------.
+#   |                                                                      |
+#   |      RT.*: RouTer counters and gauges.                              |
+#   |                                                                      |
+#   '----------------------------------------------------------------------'
+def check_zmailer_rt(_no_item, params, info):
+    var_group = "ZMAILER.RT"
+    vars = [
+        "RT.RouterProcesses-G",
+        "RT.ReceivedMessages",
+        "RT.ReceivedRecipients",
+        "RT.TransmittedMessages",
+        "RT.TransmittedRecipients",
+        "RT.ReceivedVolume-kB",
+        "RT.TransmittedVolume-kB",
+        "RT.TransmittedVolume2-kB",
+    ]
+    return process_group(var_group, vars, params, info)
+
+check_info['zmailer.RT'] = {
+    "check_function"          : check_zmailer_rt,
+    "inventory_function"      : inventory_zmailer,
+    "service_description"     : "ZMailer RT",
+    "has_perfdata"            : True,
+    "group"                   : "zmailer_rt",
+}
+
+
+#   .----------------------------------------------------------------------.
+#   |                                                                      |
+#   |      SC.*: SCheduler  counters and gauges.                           |
+#   |                                                                      |
+#   '----------------------------------------------------------------------'
+def check_zmailer_sc(_no_item, params, info):
+    var_group = "ZMAILER.SC"
+    vars = [
+        "SC.ReceivedMessages",
+        "SC.ReceivedRecipients",
+        "SC.TransmittedMessages",
+        "SC.TransmittedRecipients",
+        "SC.StoredMessages-G",
+        "SC.StoredThreads-G",
+        "SC.StoredVertices-G",
+        "SC.StoredRecipients-G",
+        "SC.TransportAgentForks",
+        "SC.TransportAgentProcesses-G",
+        "SC.TransportAgentsActive-G",
+        "SC.TransportAgentsIdle-G",
+    ]
+    return process_group(var_group, vars, params, info)
+
+check_info['zmailer.SC'] = {
+    "check_function"          : check_zmailer_sc,
+    "inventory_function"      : inventory_zmailer,
+    "service_description"     : "ZMailer SC",
+    "has_perfdata"            : True,
+    "group"                   : "zmailer_sc",
+}
+
+
+#   .----------------------------------------------------------------------.
+#   |                                                                      |
+#   |      TA-SMTP.*: SMTP transport agent counters and gauges.            |
+#   |                                                                      |
+#   '----------------------------------------------------------------------'
+def check_zmailer_ta_smtp(_no_item, params, info):
+    var_group = "ZMAILER.TA-SMTP"
+    vars = [
+        "TA-SMTP.TaProcessStarts",
+        "TA-SMTP.TaProcCount-G",
+        "TA-SMTP.TaIdleStates",
+        "TA-SMTP.TaMessages",
+        "TA-SMTP.TaDeliveryStarts",
+        "TA-SMTP.SmtpStarts",
+        "TA-SMTP.SmtpConnects",
+        "TA-SMTP.SmtpConnectFails",
+        "TA-SMTP.SmtpConnectsCnt-G",
+        "TA-SMTP.SmtpPIPELINING",
+        "TA-SMTP.SmtpEHLO",
+        "TA-SMTP.SmtpEHLOok",
+        "TA-SMTP.SmtpEHLOfail",
+        "TA-SMTP.SmtpHELO",
+        "TA-SMTP.SmtpHELOok",
+        "TA-SMTP.SmtpHELOfail",
+        "TA-SMTP.capa8BITMIME",
+        "TA-SMTP.capaAUTH",
+        "TA-SMTP.capaDSN",
+        "TA-SMTP.capaCHUNKING",
+        "TA-SMTP.capaDELIVERBY",
+        "TA-SMTP.capaENHANCEDSTATUSCODES",
+        "TA-SMTP.capaPIPELINING",
+        "TA-SMTP.capaSIZE",
+        "TA-SMTP.capaSTARTTLS",
+        "TA-SMTP.SmtpMAIL",
+        "TA-SMTP.SmtpRCPT",
+        "TA-SMTP.SmtpDATA",
+        "TA-SMTP.RcptsOk",
+        "TA-SMTP.RcptsRetry",
+        "TA-SMTP.RcptsFail",
+    ]
+    return process_group(var_group, vars, params, info)
+
+check_info['zmailer.TA-SMTP'] = {
+    "check_function"          : check_zmailer_ta_smtp,
+    "inventory_function"      : inventory_zmailer,
+    "service_description"     : "ZMailer TA-SMTP",
+    "has_perfdata"            : True,
+    "group"                   : "zmailer_ta_smtp",
+}
+
+
+#   .----------------------------------------------------------------------.
+#   |                                                                      |
+#   |      TA-MBOX.*: MBOX transport agent counters and gauges.            |
+#   |                                                                      |
+#   '----------------------------------------------------------------------'
+def check_zmailer_ta_mbox(_no_item, params, info):
+    var_group = "ZMAILER.TA-MBOX"
+    vars = [
+        "TA-MBOX.TaProcessStarts",
+        "TA-MBOX.TaProcCount-G",
+        "TA-MBOX.TaIdleStates",
+        "TA-MBOX.TaMessages",
+        "TA-MBOX.TaDeliveryStarts",
+        "TA-MBOX.RcptsOk",
+    ]
+    return process_group(var_group, vars, params, info)
+
+check_info['zmailer.TA-MBOX'] = {
+    "check_function"          : check_zmailer_ta_mbox,
+    "inventory_function"      : inventory_zmailer,
+    "service_description"     : "ZMailer TA-MBOX",
+    "has_perfdata"            : True,
+    "group"                   : "zmailer_ta_mbox",
+}
+
+
+#   .----------------------------------------------------------------------.
+#   |                                                                      |
+#   |      TA-EXPI.*: EXPIrer transport agent counters and gauges.         |
+#   |                                                                      |
+#   '----------------------------------------------------------------------'
+def check_zmailer_ta_expi(_no_item, params, info):
+    var_group = "ZMAILER.TA-EXPI"
+    vars = [
+        "TA-EXPI.TaMessages",
+    ]
+    return process_group(var_group, vars, params, info)
+
+check_info['zmailer.TA-EXPI'] = {
+    "check_function"          : check_zmailer_ta_expi,
+    "inventory_function"      : inventory_zmailer,
+    "service_description"     : "ZMailer TA-EXPI",
+    "has_perfdata"            : True,
+    "group"                   : "zmailer_ta_expi",
+}
+
+
+#   .----------------------------------------------------------------------.
+#   |                                                                      |
+#   |      TA-RERT.*: RERouTer transport agent counters and gauges.        |
+#   |                                                                      |
+#   '----------------------------------------------------------------------'
+def check_zmailer_ta_rert(_no_item, params, info):
+    var_group = "ZMAILER.TA-RERT"
+    vars = [
+        "TA-RERT.TaMessages",
+        "TA-RERT.TaDeliveryStarts",
+        "TA-RERT.RcptsOk",
+	]
+    return process_group(var_group, vars, params, info)
+
+check_info['zmailer.TA-RERT'] = {
+    "check_function"          : check_zmailer_ta_rert,
+    "inventory_function"      : inventory_zmailer,
+    "service_description"     : "ZMailer TA-RERT",
+    "has_perfdata"            : True,
+    "group"                   : "zmailer_ta_rert",
+}
+
+
+
+
+

@@ -1,0 +1,15 @@
+#!/bin/bash
+
+# Check_mk plugin to check nginx 
+#
+#	Version 1.0
+#
+# 2012-09-27 FLX f@qsol.ro
+#	- First  version
+#
+
+if which lynx && which nginx; then
+	echo '<<<nginx>>>'
+	lynx -dump 127.0.0.1/nginx_status/
+fi
+
