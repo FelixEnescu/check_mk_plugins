@@ -24,6 +24,10 @@
 # to the Free Software Foundation, Inc., 51 Franklin St,  Fifth Floor,
 # Boston, MA 02110-1301 USA.
 
+# 
+# Modified by FLX f@qsol.ro 
+#
+
 # <<<mysql>>>
 # Aborted_clients 0
 # Aborted_connects        15
@@ -77,7 +81,6 @@ def parse_mysql(info):
 #   |                                                                      |
 #   '----------------------------------------------------------------------'
 
-
 def check_mysql_qps(_no_item, params, info):
     values = parse_mysql(info)
 
@@ -125,7 +128,6 @@ def check_mysql_qps(_no_item, params, info):
     infotext = " - " + ", ".join(infos)
     return (status, nagios_state_names[status] + infotext, perfdata) 
 
-
 check_info['mysql.qps'] = {
     "check_function"          : check_mysql_qps,
     "inventory_function"      : inventory_mysql,
@@ -133,9 +135,6 @@ check_info['mysql.qps'] = {
     "has_perfdata"            : True,
     "group"                   : "mysql_qps",
 }
-
-
-
 
 
 #   .----------------------------------------------------------------------.
@@ -191,7 +190,6 @@ def check_mysql_table_locks(_no_item, params, info):
     infotext = " - " + ", ".join(infos)
     return (status, nagios_state_names[status] + infotext, perfdata) 
 
-
 check_info['mysql.table_locks'] = {
     "check_function"          : check_mysql_table_locks,
     "inventory_function"      : inventory_mysql,
@@ -199,7 +197,6 @@ check_info['mysql.table_locks'] = {
     "has_perfdata"            : True,
     "group"                   : "mysql_table_locks",
 }
-
 
 
 #   .----------------------------------------------------------------------.
@@ -264,6 +261,7 @@ check_info['mysql.threads'] = {
     "group"                   : "mysql_threads",
 }
 
+
 #   .----------------------------------------------------------------------.
 #   |                                                                      |
 #   |      Open Tables                                                     |
@@ -311,7 +309,6 @@ def check_mysql_open_tables(_no_item, params, info):
     infotext = " - " + ", ".join(infos)
     return (status, nagios_state_names[status] + infotext, perfdata) 
 
-
 check_info['mysql.open_tables'] = {
     "check_function"          : check_mysql_open_tables,
     "inventory_function"      : inventory_mysql,
@@ -319,6 +316,7 @@ check_info['mysql.open_tables'] = {
     "has_perfdata"            : True,
     "group"                   : "mysql_open_tables",
 }
+
 
 #   .----------------------------------------------------------------------.
 #   |                                                                      |
@@ -360,7 +358,6 @@ def check_mysql_slow_queries(_no_item, params, info):
     infotext = " - " + ", ".join(infos)
     return (status, nagios_state_names[status] + infotext, perfdata) 
 
-
 check_info['mysql.slow_queries'] = {
     "check_function"          : check_mysql_slow_queries,
     "inventory_function"      : inventory_mysql,
@@ -368,7 +365,6 @@ check_info['mysql.slow_queries'] = {
     "has_perfdata"            : True,
     "group"                   : "mysql_slow_queries",
 }
-
 
 
 #   .----------------------------------------------------------------------.
@@ -424,7 +420,6 @@ def check_mysql_key_reads(_no_item, params, info):
 
     infotext = " - " + ", ".join(infos)
     return (status, nagios_state_names[status] + infotext, perfdata) 
-
 
 check_info['mysql.key_reads'] = {
     "check_function"          : check_mysql_key_reads,
