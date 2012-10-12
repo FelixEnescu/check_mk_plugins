@@ -1,9 +1,12 @@
 #!/bin/bash
 #
 
-# Script to install check_mk 
+# Script to install check_mk
 #
-# Version 1.1
+# Version 1.2
+#
+# 2012-10-04 FLX f@qsol.ro
+#	- Get agent and plunig from GitHub
 #
 # 2012-10-04 FLX f@qsol.ro
 #	- Modified to be run on target machine
@@ -26,15 +29,18 @@
 mk_agent_rpm='check_mk-agent-1.2.0p3-1.noarch.rpm'
 mk_site='http://mathias-kettner.de/download'
 
-monitor_site='monitor.qsol.ro'
+#monitor_site='monitor.qsol.ro'
+
+# Needed fot iptables
 monitor_ip='89.238.194.86'
-monitor_dir='icinga/deploy'
-monitor_user='deploy'
-monitor_pass='TPF systems'
+
+
 
 agent='check_mk_agent'
 
 # mk_apache  mk_exim  mk_mysql  mk_nginx  mk_zmailer
+git_repo='https://raw.github.com/felixenescu/check_mk_plugins/master/check_mk_agent'
+git_agent='check_mk_agent.linux'
 plugins='mk_apache  mk_exim  mk_mysql'
 plugins_all='mk_apache  mk_exim  mk_mysql  mk_nginx  mk_zmailer'
 
@@ -91,23 +97,23 @@ else
 fi
 
 # Get our version of check_mk_agent
-if wget --user=$monitor_user --password="$monitor_pass" $monitor_site/$monitor_dir/$agent; then
+if wget $git_repo/$git_agent; then
 	echo -e "Got QSol check_mk_agent\n"
-	cp $agent $agent_install_dir
+	cp $agent $agent_install_dir/$agent
 	chmod +x $agent_install_dir/$agent
 else 
-	echo -e "wget $monitor_site/$monitor_dir/$agent failed.\n"
+	echo -e "wget $git_repo/$git_agent failed.\n"
 	exit 127
 fi
 
 # Get our plugins
 for plugin in $plugins; do
-	if wget --user=$monitor_user --password="$monitor_pass" $monitor_site/$monitor_dir/$plugin; then
+	if wget $git_repo/$plugin; then
 		echo -e "Got QSol plugin $plugin\n"
 		cp $plugin $plugin_install_dir/
 		chmod +x $plugin_install_dir/$plugin
 	else 
-		echo -e "wget $monitor_site/$monitor_dir/$plugin failed.\n"
+		echo -e "wget $git_repo/$plugin failed.\n"
 		exit 127
 	fi
 done
