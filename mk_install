@@ -3,10 +3,11 @@
 
 # Script to install check_mk
 #
-# Version 1.2
+# Version 1.3
 #
-# 2012-10-04 FLX f@qsol.ro
+# 2012-10-12 FLX f@qsol.ro
 #	- Get agent and plunig from GitHub
+#	- Added support (experimental) for Debian
 #
 # 2012-10-04 FLX f@qsol.ro
 #	- Modified to be run on target machine
@@ -26,12 +27,16 @@
 #####################################################################
 
 #http://mathias-kettner.de/download/check_mk-agent-1.2.0p3-1.noarch.rpm
-mk_agent_rpm='check_mk-agent-1.2.0p3-1.noarch.rpm'
 mk_site='http://mathias-kettner.de/download'
+
+mk_agent_rpm='check_mk-agent-1.2.0p3-1.noarch.rpm'
+mk_agent_deb='check-mk-agent_1.2.0p3-2_all.deb'
+
+
 
 #monitor_site='monitor.qsol.ro'
 
-# Needed fot iptables
+# Needed for iptables
 monitor_ip='89.238.194.86'
 
 
@@ -51,69 +56,97 @@ plugin_install_dir='/usr/lib/check_mk_agent/plugins'
 #####################################################################
 
 
+WGET='wget --no-verbose '
 
+#####################################################################
 
+if [ ! -d /root/qsol ]; then
+	mkdir /root/qsol
+fi
+cd /root/qsol
 
-cd /root
-mkdir qsol
-cd qsol
-mkdir check_mk
+if [ ! -d /root/qsol/check_mk ]; then
+	mkdir /root/qsol/check_mk
+fi
 cd check_mk
 
 crt_dir=`pwd`
-
 if [ "$crt_dir" != "$working_dir" ] ; then
-	echo -e "wrong working dir $crt_dir\n"
+	echo "wrong working dir $crt_dir"
+	exit 127
+fi
+
+if which yum; then
+	echo "Using yum."
+	install_cmd='yum install --assumeyes '
+	local_install_cmd='yum localinstall --nogpgcheck --assumeyes '
+	mk_agent_pkg=$mk_agent_rpm
+elif which apt-get; then
+	echo "Using apt-get. Debian not really tested - use on your own risk."
+	install_cmd='apt-get install '
+	local_install_cmd='dpkg --install '
+	mk_agent_pkg=$mk_agent_deb
+else
+	echo "yum or apt-get not found."
 	exit 127
 fi
 
 if which wget ; then
-	echo -e "wget found\n"
+	echo "wget found."
 else
-	yum install wget
+	$install_cmd wget
+
+	if which wget ; then
+		echo "wget installation ok."
+	else
+		echo "wget installation failed."
+		exit 127
+	fi
 fi
 
-if which wget ; then
-	echo "wget installation ok"
-else
-	echo "wget installation failed"
-	exit 127
-fi
 
-if wget $mk_site/$mk_agent_rpm; then
-	echo -e "Got check_mk agent rpm\n"
+
+if $WGET $mk_site/$mk_agent_pkg; then
+	echo "Got check_mk agent"
 else 
-	echo -e "wget $mk_site/$mk_agent_rpm failed.\n"
+	echo "wget $mk_site/$mk_agent_pkg failed."
 	exit 127
 fi
 
-yum install --assumeyes xinetd
- 
-if yum localinstall --nogpgcheck --assumeyes $mk_agent_rpm; then
-	echo -e "Installed check_mk agent\n"
+if $install_cmd xinetd; then
+	echo "xinetd installation ok."
 else
-	echo -e "Error installing check_mk agent\n"
+	echo "xinetd installation failed."
 	exit 127
 fi
+ 
+if $local_install_cmd $mk_agent_pkg; then
+	echo "Installed check_mk agent"
+else
+	echo "Error installing check_mk agent"
+	exit 127
+fi
+
+
 
 # Get our version of check_mk_agent
-if wget $git_repo/$git_agent; then
-	echo -e "Got QSol check_mk_agent\n"
-	cp $agent $agent_install_dir/$agent
+if $WGET $git_repo/$git_agent; then
+	echo "Got QSol check_mk_agent"
+	cp $git_agent $agent_install_dir/$agent
 	chmod +x $agent_install_dir/$agent
 else 
-	echo -e "wget $git_repo/$git_agent failed.\n"
+	echo "wget $git_repo/$git_agent failed."
 	exit 127
 fi
 
 # Get our plugins
 for plugin in $plugins; do
-	if wget $git_repo/$plugin; then
-		echo -e "Got QSol plugin $plugin\n"
+	if $WGET $git_repo/$plugin; then
+		echo "Got QSol plugin $plugin"
 		cp $plugin $plugin_install_dir/
 		chmod +x $plugin_install_dir/$plugin
 	else 
-		echo -e "wget $git_repo/$plugin failed.\n"
+		echo "wget $git_repo/$plugin failed."
 		exit 127
 	fi
 done
@@ -121,10 +154,10 @@ done
 if which apachectl || which apache2ctl || [ -x /usr/local/apache/bin/apachectl ]; then
 	echo '<<<apache found>>>'
 	
-	if yum install --assumeyes lynx ; then
-		echo -e "Installed lynx\n"
+	if $install_cmd lynx ; then
+		echo "Installed lynx"
 	else
-		echo -e "Error installing lynx\n"
+		echo "Error installing lynx"
 		exit 127
 	fi
 fi
@@ -132,13 +165,13 @@ fi
 if which mysql; then
 	echo '<<<mysql found>>>'
 	if [ -f "/root/.my.cnf" ] ; then
-		echo -e ".my.cnf already exists\n"
+		echo ".my.cnf already exists"
 	else
-		echo -e "[client]\n" >> /root/.my.cnf
-		echo -e "user=\"USER\"\n" >> /root/.my.cnf
-		echo -e "password=\"PASSWORD\"\n" >> /root/.my.cnf
+		echo "[client]" >> /root/.my.cnf
+		echo "user=\"USER\"" >> /root/.my.cnf
+		echo "password=\"PASSWORD\"" >> /root/.my.cnf
 		chmod 0600 /root/.my.cnf
-		echo -e "Template .my.cnf created. Be sure to edit it."
+		echo "Template .my.cnf created. Be sure to edit it."
 	fi
 fi
 
