@@ -1,0 +1,15 @@
+#!/bin/bash
+
+# Check_mk plugin to check memcached 
+#
+#	Version 1.0
+#
+# 2012-11-19 FLX f@qsol.ro
+#	- First  version
+#
+
+if which nc && which memcached; then
+	echo '<<<memcached>>>'
+	echo "stats" | nc localhost 11211
+fi
+
