@@ -46,8 +46,8 @@ agent='check_mk_agent'
 # mk_apache  mk_exim  mk_mysql  mk_nginx  mk_zmailer
 git_repo='https://raw.github.com/felixenescu/check_mk_plugins/master/check_mk_agent'
 git_agent='check_mk_agent.linux'
-plugins='mk_apache  mk_exim  mk_mysql'
-plugins_all='mk_apache  mk_exim  mk_mysql  mk_nginx  mk_zmailer'
+plugins='mk_apache mk_exim mk_mysql'
+plugins_all='mk_apache mk_exim mk_mysql mk_nginx mk_zmailer mk_memcached'
 
 working_dir='/root/qsol/check_mk'
 agent_install_dir='/usr/bin'
@@ -140,7 +140,7 @@ else
 fi
 
 # Get our plugins
-for plugin in $plugins; do
+for plugin in $plugins_all; do
 	if $WGET $git_repo/$plugin; then
 		echo "Got QSol plugin $plugin"
 		cp $plugin $plugin_install_dir/
@@ -151,9 +151,8 @@ for plugin in $plugins; do
 	fi
 done
 
-if which apachectl || which apache2ctl || [ -x /usr/local/apache/bin/apachectl ]; then
-	echo '<<<apache found>>>'
-	
+if which nginx || which apachectl || which apache2ctl || [ -x /usr/local/apache/bin/apachectl ]; then
+	echo '<<<apache or nginx found>>>'
 	if $install_cmd lynx ; then
 		echo "Installed lynx"
 	else
@@ -172,6 +171,16 @@ if which mysql; then
 		echo "password=\"PASSWORD\"" >> /root/.my.cnf
 		chmod 0600 /root/.my.cnf
 		echo "Template .my.cnf created. Be sure to edit it."
+	fi
+fi
+
+if which memcached; then
+	echo '<<<memcached>>>'
+	if $install_cmd nc ; then
+		echo "Installed nc"
+	else
+		echo "Error installing nc"
+		exit 127
 	fi
 fi
 
