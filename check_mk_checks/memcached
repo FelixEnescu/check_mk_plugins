@@ -1,0 +1,280 @@
+#!/usr/bin/python
+# -*- encoding: utf-8; py-indent-offset: 4 -*-
+
+#
+# 2012-11-19 FLX f@qsol.ro
+#    - first version
+#
+
+#<<<memcached>>>
+#STAT pid 8702
+#STAT uptime 246444
+#STAT time 1353328274
+#STAT version 1.4.14
+#STAT libevent 1.4.13-stable
+#STAT pointer_size 64
+#STAT rusage_user 2.816571
+#STAT rusage_system 3.404482
+
+
+#   .----------------------------------------------------------------------.
+#   |                                                                      |
+#   |      Helper Functions                                                |
+#   |                                                                      |
+#   '----------------------------------------------------------------------'
+
+def inventory_memcached(info):
+    if len(info) > 10: # should be at least 20 line
+        return [(None, {})]
+
+def parse_memcached(info):
+    values = {}
+    for line in info:
+        if len(line) == 3:
+            tmp, varname, value = line
+            try:
+                value = int(value)
+            except:
+                pass
+        else:
+            varname = line[0]
+            value = None
+
+        values[varname] = value
+    return values
+
+def bytes_to_human(value):
+    fval = float(value)
+    #sys.stderr.write("uom %s : value %s\n" % (uom, value))
+
+    if fval >= 1024*1024*1024:
+        sval =  "%.2fGB" % (fval/(1024*1024*1024))
+    elif fval >= 1024*1024:
+        sval =  "%.2fMB" % (fval/(1024*1024))
+    elif fval >= 1024:
+        sval =  "%.2fKB" % (fval/(1024))
+    else:
+        sval = "%d" % fval
+    return sval
+
+#   .----------------------------------------------------------------------.
+#   |                                                                      |
+#   |      Memcached Connections                                           |
+#   |                                                                      |
+#   '----------------------------------------------------------------------'
+
+def check_memcached_connections(_no_item, params, info):
+    values = parse_memcached(info)
+
+    crt_time = time.time()
+    
+    MEMC_curr_connections = values["curr_connections"]
+
+    infos = []
+    perfdata = []
+    status = 0
+
+    for value, what, format, unit, convert, maxval in [
+        ( MEMC_curr_connections,  "Current",   "%d",   "", "",  None ),
+
+        ]:
+        infos.append(("%s "+format + "%s") % (what, value, unit))
+        if what in params:
+            warn, crit = params[what]
+            #sys.stderr.write("what %s : w %s c %s\n" % (what, warn, crit))
+
+            if value >= crit:
+                status = 2
+                infos[-1] += "(!!)"
+            elif value >= warn:
+                status = max(status, 1)
+                infos[-1] += "(!)"
+        else:
+            warn, crit = None, None
+        perfdata.append((what, value, warn, crit, 0, maxval))
+
+    infotext = " - " + ", ".join(infos)
+    return (status, nagios_state_names[status] + infotext, perfdata) 
+
+check_info['memcached.connections'] = {
+    "check_function"          : check_memcached_connections,
+    "inventory_function"      : inventory_memcached,
+    "service_description"     : "Memcached Connections",
+    "has_perfdata"            : True,
+    "group"                   : "memcached_connections",
+}
+
+
+#   .----------------------------------------------------------------------.
+#   |                                                                      |
+#   |      Memcached Requests                                              |
+#   |                                                                      |
+#   '----------------------------------------------------------------------'
+
+def check_memcached_requests(_no_item, params, info):
+    values = parse_memcached(info)
+
+    crt_time = time.time()
+    
+    timedif, MEMC_cmd_get = get_counter("memcached.requests.MEMC_cmd_get", crt_time, values["cmd_get"])
+    timedif, MEMC_cmd_set = get_counter("memcached.requests.MEMC_cmd_set", crt_time, values["cmd_set"])
+    timedif, MEMC_get_misses = get_counter("memcached.requests.MEMC_get_misses", crt_time, values["get_misses"])
+    timedif, MEMC_get_hits = get_counter("memcached.requests.MEMC_get_hits", crt_time, values["get_hits"])
+
+    infos = []
+    perfdata = []
+    status = 0
+
+    for value, what, format, unit, convert, maxval in [
+        ( MEMC_cmd_get,     "Cmd Get",      "%d",   "/s", "",  None ),
+        ( MEMC_cmd_set,     "Cmd Set",      "%d",   "/s", "",  None ),
+        ( MEMC_get_misses,  "Get Misses",   "%d",   "/s", "",  None ),
+        ( MEMC_get_hits,    "Get Hits",     "%d",   "/s", "",  None ),
+
+        ]:
+        if convert == "B":
+            human_value = bytes_to_human(value)
+        else:
+            human_value = value
+        
+        infos.append(("%s "+format + "%s") % (what, human_value, unit))
+#        infos.append(("%s "+format + "%s") % (what, value, unit))
+        if what in params:
+            warn, crit = params[what]
+            #sys.stderr.write("what %s : w %s c %s\n" % (what, warn, crit))
+
+            if value >= crit:
+                status = 2
+                infos[-1] += "(!!)"
+            elif value >= warn:
+                status = max(status, 1)
+                infos[-1] += "(!)"
+        else:
+            warn, crit = None, None
+        perfdata.append((what, value, warn, crit, 0, maxval))
+
+    infotext = " - " + ", ".join(infos)
+    return (status, nagios_state_names[status] + infotext, perfdata) 
+
+check_info['memcached.requests'] = {
+    "check_function"          : check_memcached_requests,
+    "inventory_function"      : inventory_memcached,
+    "service_description"     : "Memcached Requests",
+    "has_perfdata"            : True,
+    "group"                   : "memcached_requests",
+}
+
+#   .----------------------------------------------------------------------.
+#   |                                                                      |
+#   |      Memcached Cache Usage                                           |
+#   |                                                                      |
+#   '----------------------------------------------------------------------'
+
+def check_memcached_cache_usage(_no_item, params, info):
+    values = parse_memcached(info)
+
+    crt_time = time.time()
+
+    MEMC_bytes = values["bytes"]
+    MEMC_limit_maxbytes = values["limit_maxbytes"]
+    MEMC_curr_items = values["curr_items"]
+    
+
+    infos = []
+    perfdata = []
+    status = 0
+
+    for value, what, format, unit, convert, maxval in [
+        ( MEMC_bytes,              "Used",      "%s",   "", "B",  None ),
+        ( MEMC_limit_maxbytes,     "Total",     "%s",   "", "B",  None ),
+        ( MEMC_curr_items,         "Crt Items", "%d",   "",  "",  None ),
+
+        ]:
+        if convert == "B":
+            human_value = bytes_to_human(value)
+        else:
+            human_value = value
+        
+        infos.append(("%s "+format + "%s") % (what, human_value, unit))
+#        infos.append(("%s "+format + "%s") % (what, value, unit))
+        if what in params:
+            warn, crit = params[what]
+            #sys.stderr.write("what %s : w %s c %s\n" % (what, warn, crit))
+
+            if value >= crit:
+                status = 2
+                infos[-1] += "(!!)"
+            elif value >= warn:
+                status = max(status, 1)
+                infos[-1] += "(!)"
+        else:
+            warn, crit = None, None
+        perfdata.append((what, value, warn, crit, 0, maxval))
+
+    infotext = " - " + ", ".join(infos)
+    return (status, nagios_state_names[status] + infotext, perfdata) 
+
+check_info['memcached.cache_usage'] = {
+    "check_function"          : check_memcached_cache_usage,
+    "inventory_function"      : inventory_memcached,
+    "service_description"     : "Memcached Cache Usage",
+    "has_perfdata"            : True,
+    "group"                   : "memcached_cache_usage",
+}
+
+#   .----------------------------------------------------------------------.
+#   |                                                                      |
+#   |      Memcached Traffic                                               |
+#   |                                                                      |
+#   '----------------------------------------------------------------------'
+
+def check_memcached_traffic(_no_item, params, info):
+    values = parse_memcached(info)
+
+    crt_time = time.time()
+
+    timedif, MEMC_bytes_read = get_counter("memcached.traffic.MEMC_bytes_read", crt_time, values["bytes_read"])
+    timedif, MEMC_bytes_written = get_counter("memcached.traffic.MEMC_bytes_written", crt_time, values["bytes_written"])
+    
+
+    infos = []
+    perfdata = []
+    status = 0
+
+    for value, what, format, unit, convert, maxval in [
+        ( MEMC_bytes_read,        "Bytes Read",      "%d",   "", "",  None ),
+        ( MEMC_bytes_written,     "Bytes Written",   "%d",   "", "",  None ),
+
+        ]:
+        if convert == "B":
+            human_value = bytes_to_human(value)
+        else:
+            human_value = value
+        
+        infos.append(("%s "+format + "%s") % (what, human_value, unit))
+#        infos.append(("%s "+format + "%s") % (what, value, unit))
+        if what in params:
+            warn, crit = params[what]
+            #sys.stderr.write("what %s : w %s c %s\n" % (what, warn, crit))
+
+            if value >= crit:
+                status = 2
+                infos[-1] += "(!!)"
+            elif value >= warn:
+                status = max(status, 1)
+                infos[-1] += "(!)"
+        else:
+            warn, crit = None, None
+        perfdata.append((what, value, warn, crit, 0, maxval))
+
+    infotext = " - " + ", ".join(infos)
+    return (status, nagios_state_names[status] + infotext, perfdata) 
+
+check_info['memcached.traffic'] = {
+    "check_function"          : check_memcached_traffic,
+    "inventory_function"      : inventory_memcached,
+    "service_description"     : "Memcached Traffic",
+    "has_perfdata"            : True,
+    "group"                   : "memcached_traffic",
+}
+
