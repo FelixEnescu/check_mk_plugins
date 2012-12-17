@@ -314,6 +314,9 @@ def check_apache_scoreboard(_no_item, params, info):
     
     #  Apped lines until a line with  "Scoreboard Key:" is found
     for line in info[poz:]:
+		# ignore empty lines
+		if (len(line) < 2):
+			pass
         if (len(line) >= 2) and (line[0] == "Scoreboard"):
             break
         scoreboard += ''.join(line)

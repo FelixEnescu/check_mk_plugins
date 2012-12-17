@@ -5,6 +5,9 @@
 #
 # Version 1.3
 #
+# Get it with: 
+# wget https://raw.github.com/felixenescu/check_mk_plugins/master/mk_install
+#
 # 2012-10-12 FLX f@qsol.ro
 #	- Get agent and plunig from GitHub
 #	- Added support (experimental) for Debian
@@ -130,14 +133,14 @@ fi
 
 
 # Get our version of check_mk_agent
-if $WGET $git_repo/$git_agent; then
-	echo "Got QSol check_mk_agent"
-	cp $git_agent $agent_install_dir/$agent
-	chmod +x $agent_install_dir/$agent
-else 
-	echo "wget $git_repo/$git_agent failed."
-	exit 127
-fi
+#if $WGET $git_repo/$git_agent; then
+#	echo "Got QSol check_mk_agent"
+#	cp $git_agent $agent_install_dir/$agent
+#	chmod +x $agent_install_dir/$agent
+#else 
+#	echo "wget $git_repo/$git_agent failed."
+#	exit 127
+#fi
 
 # Get our plugins
 for plugin in $plugins_all; do
@@ -153,10 +156,16 @@ done
 
 if which nginx || which apachectl || which apache2ctl || [ -x /usr/local/apache/bin/apachectl ]; then
 	echo '<<<apache or nginx found>>>'
-	if $install_cmd lynx ; then
-		echo "Installed lynx"
+#	if $install_cmd lynx ; then
+#		echo "Installed lynx"
+#	else
+#		echo "Error installing lynx"
+#		exit 127
+#	fi
+	if $install_cmd links ; then
+		echo "Installed links"
 	else
-		echo "Error installing lynx"
+		echo "Error installing links"
 		exit 127
 	fi
 fi
