@@ -62,8 +62,8 @@ plugin_install_dir='/usr/lib/check_mk_agent/plugins'
 #####################################################################
 
 
-#WGET='wget --no-verbose --no-check-certificate '
-WGET='wget --no-verbose '
+WGET='wget --no-verbose --no-check-certificate '
+#WGET='wget --no-verbose '
 
 #####################################################################
 
@@ -160,12 +160,7 @@ done
 
 if which nginx || which apachectl || which apache2ctl || [ -x /usr/local/apache/bin/apachectl ]; then
 	echo '<<<apache or nginx found>>>'
-#	if $install_cmd lynx ; then
-#		echo "Installed lynx"
-#	else
-#		echo "Error installing lynx"
-#		exit 127
-#	fi
+
 	if $install_cmd links ; then
 		echo "Installed links"
 	else
