@@ -6,7 +6,7 @@
 # Version 1.3.1
 #
 # Get it with: 
-# wget https://raw.github.com/felixenescu/check_mk_plugins/master/mk_install
+# wget --no-check-certificate https://raw.github.com/felixenescu/check_mk_plugins/master/mk_install
 #
 # 2013-01-24 FLX f@qsol.ro
 #	- Added iptables save
@@ -52,7 +52,7 @@ agent='check_mk_agent'
 # mk_apache  mk_exim  mk_mysql  mk_nginx  mk_zmailer
 git_repo='https://raw.github.com/felixenescu/check_mk_plugins/master/check_mk_agent'
 git_agent='check_mk_agent.linux'
-plugins='mk_apache mk_exim mk_mysql'
+plugins='mk_apache mk_mysql'
 plugins_all='mk_apache mk_exim mk_mysql mk_nginx mk_zmailer mk_memcached'
 
 working_dir='/root/qsol/check_mk'
