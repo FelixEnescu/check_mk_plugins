@@ -1,15 +1,17 @@
 #!/bin/bash
 
-# Check_mk plugin to check memcached 
+# Check_mk plugin to check memcached
 #
-#	Version 1.0
+#       Version 1.1
 #
 # 2012-11-19 FLX f@qsol.ro
-#	- First  version
+#       - First  version
 #
+# 2013-11-28 Stephan Helas
+#       - Patch to exit correctly
 
 if which nc && which memcached; then
-	echo '<<<memcached>>>'
-	echo "stats" | nc localhost 11211
+        echo '<<<memcached>>>'
+        #echo "stats" | nc localhost 11211
+        echo -e "stats\nquit" | nc 127.0.0.1 11211
 fi
-
